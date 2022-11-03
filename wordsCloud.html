@@ -1,0 +1,257 @@
+<!-- 词云案例原版 -->
+<!DOCTYPE html>
+<html>
+<body>
+
+<canvas id="myCanvas" width="1200" height="500" style="border:1px solid #d3d3d3;">
+Your browser does not support the HTML5 canvas tag.
+</canvas>
+
+<script>
+// 点击回调，参考https://www.cnblogs.com/liu7i/p/14399875.html
+// 本词云参考网上拷贝来的wordCloud.html（网址忘了）。在他的基础上做了点修改
+
+// 后期可以优化。
+// 1、把字符长的渲染几个上去，位置不够了再用短词用小圆渲染上去。
+// 2、位置随机选择，在选择合适的半径大小。避免个数少的时候，只出现在右边
+
+// 单个圆的实例
+class Circle {
+  constructor (x, y, r, colors) {
+    this.x = x
+    this.y = y
+    this.r = r
+    this.fontSize = (r / 2) > 40 ? 40 : r / 2
+    const colorObj = this.getRandomColor(colors)
+    this.bg = colorObj.bg
+    this.bc1 = colorObj.bc1
+    this.bc2 = colorObj.bc2
+  }
+
+  getRandomColor (colors) {
+    const index = Math.floor(Math.random() * colors.length)
+    return colors[index]
+  }
+}
+
+class RandomCircle {
+  constructor (obj) {
+    this.cDom = document.getElementById(obj.id)
+    this.ctx = this.cDom.getContext('2d')
+    // canvas的宽高
+    this.dWidth = this.cDom.width
+    this.dHeight = this.cDom.height
+    // 要渲染的词汇列表
+    this.list = obj.list
+    // 当前传递的词云列表个数，小于20个时把矩形的那个数量给加上，避免后端返回的数据少画一个
+    this.total = obj.list.length < 20 ? obj.list.length + 1 : 20
+
+    // 词云总个数
+    this.allTotal = obj.total
+    // 颜色
+    this.colors = obj.colors
+
+    this.fix = obj.fix || false
+    this.minMargin = obj.minMargin || 10
+    this.minRadius = obj.minRadius || 40
+    this.radiuArr = obj.radiuArr || [80, 70, 60, 50, 45, 40]
+    // 所有圆的实例集合
+    this.circleArray = []
+    // 圆的个数，或可以用作当前是第几个圆
+    this.circleNumber = 0
+  }
+
+  // 如果生成100种方案都没有合适可用的话，终止进程。
+  init () {
+    this.circleArray = []
+    let i = 0
+    while (this.circleArray.length < this.total) {
+      if (i === 0) {
+        this.drawRectText()
+      } else {
+        this.createOneCircle()
+      }
+      i++
+      if (i >= 100) {
+        break
+      }
+    }
+
+    // 根据半径从大到小画圆。
+    // this.circleArray.sort((a, b) => b.r - a.r).forEach((item, i) => {
+    //   // console.log('forEach', item, i)
+    //   !item.isCustom && this.drawOneCircle(item, i)
+    // })
+  }
+
+  // 创建右上角总计的自定义矩形
+  drawRectText () {
+    const self = this
+    try {
+      // 创造一个圆占位，防止被后面的圆覆盖
+      const r = 165 / 2
+      // 此x,y为矩形中心点
+      const circle = { x: this.dWidth - r - 12, y: 12 + 30, r, text: 'AA', isCustom: true, bg: '#fff', bc1: 'red', bc2: 'yellow' }
+      this.circleArray.push(circle)
+
+      // 绘制矩形
+      const ctx = this.ctx
+      const rect = {
+        x: circle.x - r,
+        y: circle.y - 30
+      }
+
+      ctx.beginPath()
+      ctx.rect(rect.x, rect.y, 165, 60)
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
+      ctx.fill()
+      // const img = new Image()
+      // img.src = require('@/assets/images/btn-img.png')
+      // img.onload = function () {
+      //   ctx.drawImage(img, rect.x, rect.y, 165, 60)
+
+        // 绘制文字。onload是异步，如果下面这段放外面会和加载图片同步执行，最后被图片盖住。
+        // ctx.closePath()
+        ctx.fillStyle = '#fff'
+        ctx.font = '20px YouSheBiaoTiHei'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText('总计 ' + self.allTotal + '个', circle.x, circle.y)
+        // ctx.closePath()
+      // }
+      // img.onerror = function (err) {
+      //   console.log(err, '背景图加载失败')
+      // }
+      // ctx.beginPath()
+
+      this.circleNumber++
+    } catch (error) {
+      console.error(error)
+    }
+  }
+
+  // 生成一个圆，随机生成圆心。
+  // 如果连续生成200次半径都没有合适的话，终止进程
+  createOneCircle () {
+    let x, y, r
+    let createCircleTimes = 0
+    while (true) {
+      createCircleTimes++
+      x = Math.floor(Math.random() * this.dWidth)
+      y = Math.floor(Math.random() * this.dHeight)
+      const TR = this.getR(x, y)
+      if (!TR) {
+        continue
+      } else {
+        r = TR
+      }
+      if (this.check(x, y, r) || createCircleTimes > 100) {
+        break
+      }
+    }
+    this.check(x, y, r) && this.circleArray.push(new Circle(x, y, r, this.colors))
+  }
+
+  // 绘制圆，上色，填充内容
+  drawOneCircle (c, index, position = null, clickCallBack) {
+    const ctx = this.ctx
+    ctx.beginPath()
+    ctx.arc(c.x, c.y, c.r - 8, 0, 2 * Math.PI)
+    ctx.strokeStyle = c.bg
+    ctx.stroke()
+    ctx.fillStyle = c.bg
+    ctx.fill()
+    // 这个图形是整个圆及它的填充色，不写closePath的话，绘制的边框颜色不对，透明度失效了
+    ctx.closePath()
+
+    ctx.beginPath()
+    ctx.arc(c.x, c.y, c.r - 4, 0, 2 * Math.PI)
+    ctx.strokeStyle = c.bc1
+    ctx.stroke()
+    // 关闭掉下面的closePath和beginPath，是因为不注释会影响点击回调，无法判断当前点击的点是否在当前绘制的路径上
+    // ctx.closePath()
+
+    // ctx.beginPath()
+    ctx.arc(c.x, c.y, c.r, 0, 2 * Math.PI)
+    ctx.strokeStyle = c.bc2
+    ctx.stroke()
+    // ctx.closePath()
+
+    // ctx.beginPath()
+    ctx.fillStyle = '#fff'
+    ctx.font = c.fontSize + 'px YouSheBiaoTiHei'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    c.text = this.list[index]
+    ctx.fillText(this.list[index], c.x, c.y)
+    this.circleNumber++
+    if (position && ctx.isPointInPath(position.x, position.y)) {
+      clickCallBack && clickCallBack({
+        current: c,
+        index
+      })
+    }
+    // ctx.fillText('R:' + this.circleNumber, c.x, c.y)
+    ctx.closePath()
+  }
+
+  // 判断整个圆是否超出视图
+  // 加了个!,所以结果是true没有超出
+  check (x, y, r) {
+    return !(x + r > this.dWidth || x - r < 0 || y + r > this.dHeight || y - r < 0)
+  }
+
+  // 获取一个新圆的半径，主要判断半径与最近的一个圆的距离
+  getR (x, y) {
+    if (this.circleArray.length === 0) return Math.floor(Math.random() * 20 + 80)
+    const lenArr = this.circleArray.map(item => {
+      const xSpan = item.x - x
+      const ySpan = item.y - y
+      return Math.floor(Math.sqrt(Math.pow(xSpan, 2) + Math.pow(ySpan, 2))) - item.r
+    })
+    const minCircleLen = Math.min(...lenArr)
+    const minC = this.circleArray[lenArr.indexOf(minCircleLen)]
+    const tempR = this.fix ? this.radiuArr[this.circleArray.length] : minCircleLen - this.minMargin
+    const bool = this.fix ? (tempR <= minCircleLen - minC.r) : (tempR >= this.minRadius)
+    // console.log(x, y, minCircleLen, minC, tempR, bool)
+    return bool ? tempR : false
+  }
+
+  // 清空画布。利用canvas自带的clearRect方法
+  reset () {
+    this.ctx && this.ctx.clearRect(0, 0, this.dWidth, this.dHeight)
+  }
+}
+
+let p = new RandomCircle({
+  id: 'myCanvas',
+  list: ['富强', '民主', '文明', '和谐', '自由', '平等', '公正', '法治', '爱国', '敬业', '诚信', '友善'],
+  total: 20,
+  colors: [
+    {
+      bg: 'rgba(18, 120, 178, 0.3)',
+      bc1: '#32B0F9',
+      bc2: 'rgba(51, 180, 254, 0.2)'
+    },
+    {
+      bg: 'rgba(23, 129, 141, 0.3)',
+      bc1: '#2FD1E2',
+      bc2: 'rgba(47, 209, 226, 0.2)'
+    },
+    {
+      bg: 'rgba(181, 81, 31, 0.3)',
+      bc1: '#FE9967',
+      bc2: 'rgba(254, 153, 103, 0.2)'
+    }
+  ]
+})
+p.init()
+console.log(p.circleArray)
+p.circleArray.filter(d => !d.isCustom).forEach((d, i) => {
+  p.drawOneCircle(d, i)
+})
+
+
+</script> 
+</body>
+</html>
